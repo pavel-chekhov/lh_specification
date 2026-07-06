@@ -35,9 +35,33 @@ POST https://graph.facebook.com/v<GRAPH_API_VERSION>/<PIXEL_ID>/events?access_to
 | `event_name` | `Purchase` |
 | `action_source` | `website` |
 | `event_time` | Unix timestamp в секундах, UTC |
-| `event_id` | Уникальный ID покупки, желательно `order_id` |
+| `event_id` | Уникальный идентификатор покупки |
 
-`event_id` должен совпадать с `eventID` браузерного Meta Pixel события `Purchase`, если событие также отправляется из браузера. Это нужно для дедупликации.
+`event_id` должен совпадать с `transaction_id` события GA4 `purchase`.
+
+Пример GA4/GTM `dataLayer.push`:
+
+```js
+dataLayer.push({ ecommerce: null });
+dataLayer.push({
+  event: "purchase",
+  ecommerce: {
+    transaction_id: "purchase_123456",
+    value: 14.99,
+    currency: "USD",
+    items: [
+      {
+        item_id: "121234",
+        item_name: "Max Monthly",
+        price: 14.99,
+        quantity: 1
+      }
+    ]
+  }
+});
+```
+
+`ecommerce.transaction_id` в GA4 должен быть равен `data[].event_id` в Meta CAPI payload.
 
 `event_time` не должен быть старше 7 дней на момент отправки.
 
@@ -49,7 +73,7 @@ POST https://graph.facebook.com/v<GRAPH_API_VERSION>/<PIXEL_ID>/events?access_to
     {
       "event_name": "Purchase",
       "event_time": 1719835200,
-      "event_id": "order_123456",
+      "event_id": "purchase_123456",
       "action_source": "website",
       "event_source_url": "https://example.com/checkout/success",
       "user_data": {
@@ -63,15 +87,13 @@ POST https://graph.facebook.com/v<GRAPH_API_VERSION>/<PIXEL_ID>/events?access_to
       },
       "custom_data": {
         "currency": "USD",
-        "value": 14.99,
-        "order_id": "order_123456",
+        "value": 14.99, // общая стоимость заказа
+        "order_id": "purchase_123456", // Фактически, это дубль поля event_id, если там используется значение order_id
         "content_type": "product",
-        "content_ids": ["max_monthly"],
         "contents": [
           {
-            "id": "max_monthly",
-            "quantity": 1,
-            "item_price": 14.99
+            "id": "121234", // ID товара тот же, что в поле item_id элемента массива `items` объекта ecommerce GA4.
+            "quantity": 1
           }
         ]
       }
@@ -79,6 +101,8 @@ POST https://graph.facebook.com/v<GRAPH_API_VERSION>/<PIXEL_ID>/events?access_to
   ]
 }
 ```
+
+Важно соблюдать типы данных JSON так, как они указаны в примере выше и в таблицах ниже. Числовые поля передавать без кавычек, например `"value": 14.99`, `"quantity": 1`, `"event_time": 1719835200`. Текстовые поля всегда передавать в кавычках, даже если значение визуально состоит только из цифр. Например, ID товара в `contents[].id` является строковым значением, поэтому корректно передавать `"id": "121234"`, а не `"id": 121234`.
 
 ## Обязательные поля
 
@@ -97,7 +121,7 @@ POST https://graph.facebook.com/v<GRAPH_API_VERSION>/<PIXEL_ID>/events?access_to
 
 | Поле | Тип | Описание |
 |---|---|---|
-| `data[].event_id` | string | ID для дедупликации. Использовать `order_id` |
+| `data[].event_id` | string | Стабильный уникальный идентификатор покупки. Значение должно совпадать с `transaction_id` в GA4 `purchase` |
 | `user_data.em` | array<string> | Email, нормализованный и SHA-256 hashed |
 | `user_data.ph` | array<string> | Телефон, нормализованный и SHA-256 hashed |
 | `user_data.external_id` | array<string> | Internal user ID, не хэшировать. Использовать стабильный ID пользователя в исходном формате |
@@ -146,7 +170,7 @@ fb.1.<creation_time_ms>.<fbclid>
 | Часть | Описание |
 |---|---|
 | `fb` | Фиксированный prefix |
-| `1` | Subdomain index. Для обычного сайта использовать `1` |
+| `1` | Subdomain index. В нашем случае использовать всегда `1` |
 | `<creation_time_ms>` | Unix timestamp в миллисекундах на момент сохранения `fbclid` |
 | `<fbclid>` | Значение query-параметра `fbclid` из landing URL |
 
@@ -155,6 +179,8 @@ fb.1.<creation_time_ms>.<fbclid>
 ```text
 fb.1.1719834000000.AbCdEfGhIjKl
 ```
+
+Если сайт работает на `www.example.com`, второй блок все равно остается `1`: `fb.1.<creation_time_ms>.<fbclid>`. Домен cookie задается отдельно через атрибут cookie, например `Domain=.example.com` или host-only cookie на `www.example.com`; в само значение `fbc` домен или поддомен не подставляется.
 
 ### Client-side fallback
 
@@ -231,7 +257,7 @@ curl -X POST "https://graph.facebook.com/v<GRAPH_API_VERSION>/<PIXEL_ID>/events"
       {
         "event_name": "Purchase",
         "event_time": 1719835200,
-        "event_id": "order_123456",
+        "event_id": "purchase_123456",
         "action_source": "website",
         "event_source_url": "https://example.com/checkout/success",
         "user_data": {
@@ -298,20 +324,17 @@ curl -X POST "https://graph.facebook.com/v<GRAPH_API_VERSION>/<PIXEL_ID>/events"
 
 ## Требования к реализации
 
-1. Отправлять `Purchase` только один раз на один `order_id`.
-2. Использовать backend-to-backend запрос. Access token не должен попадать во frontend.
-3. Таймаут запроса: 3-5 секунд.
-4. Retry делать только для сетевых ошибок и 5xx, не более 3 попыток.
-5. Для 4xx retry не делать, ошибку логировать.
-6. Не блокировать успешную оплату пользователя из-за ошибки отправки в Meta.
-7. Хранить факт отправки/ошибки по `order_id` для аудита и защиты от дублей.
+1. Использовать backend-to-backend запрос. Access token не должен попадать во frontend.
+2. Таймаут запроса: 3-5 секунд.
+3. Retry делать только для сетевых ошибок и 5xx, не более 3 попыток.
+4. Для 4xx retry не делать, ошибку логировать.
 
-## Acceptance criteria
+## Критерии приемки
 
 - После успешной оплаты backend отправляет `POST /<PIXEL_ID>/events`.
 - В payload есть ровно одно событие `Purchase`.
 - `event_time` передается в секундах, UTC.
-- `event_id` равен `order_id` или другому стабильному ID покупки.
+- `event_id` является стабильным уникальным идентификатором покупки и равен `transaction_id` GA4 `purchase`.
 - `currency` и `value` соответствуют фактической оплате.
 - `user_data` содержит минимум один идентификатор пользователя, лучше несколько: `em`, `external_id`, `fbp`, `fbc`, IP, User-Agent.
 - Access token не виден в браузере и не попадает в клиентские логи.
