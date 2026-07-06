@@ -24,7 +24,7 @@ POST https://graph.facebook.com/v<GRAPH_API_VERSION>/<PIXEL_ID>/events?access_to
 
 | Параметр | Описание |
 |---|---|
-| `<GRAPH_API_VERSION>` | Версия Graph API, закрепленная в проекте, например `vXX.X` |
+| `<GRAPH_API_VERSION>` | Версия Graph API, закрепленная в проекте. На 2026-07-06 текущая версия: `v25.0` |
 | `<PIXEL_ID>` | ID Meta Pixel / Dataset |
 | `<ACCESS_TOKEN>` | Access token с правом отправки событий в Conversions API |
 
@@ -55,7 +55,7 @@ POST https://graph.facebook.com/v<GRAPH_API_VERSION>/<PIXEL_ID>/events?access_to
       "user_data": {
         "em": ["<sha256_email>"],
         "ph": ["<sha256_phone>"],
-        "external_id": ["<sha256_user_id>"],
+        "external_id": ["<sha256_user_id_recommended>"],
         "client_ip_address": "203.0.113.10",
         "client_user_agent": "Mozilla/5.0 ...",
         "fbp": "fb.1.1719834000000.1234567890",
@@ -100,7 +100,7 @@ POST https://graph.facebook.com/v<GRAPH_API_VERSION>/<PIXEL_ID>/events?access_to
 | `data[].event_id` | string | ID для дедупликации. Использовать `order_id` |
 | `user_data.em` | array<string> | Email, нормализованный и SHA-256 hashed |
 | `user_data.ph` | array<string> | Телефон, нормализованный и SHA-256 hashed |
-| `user_data.external_id` | array<string> | Internal user ID, SHA-256 hashed |
+| `user_data.external_id` | array<string> | Internal user ID. SHA-256 хэширование рекомендуется Meta, но не является обязательным |
 | `user_data.client_ip_address` | string | IP пользователя, не хэшировать |
 | `user_data.client_user_agent` | string | User-Agent пользователя, не хэшировать |
 | `user_data.fbp` | string | Значение cookie `_fbp`, если есть |
@@ -111,13 +111,15 @@ POST https://graph.facebook.com/v<GRAPH_API_VERSION>/<PIXEL_ID>/events?access_to
 
 ## Нормализация user_data
 
-Перед SHA-256:
+Перед SHA-256, если значение хэшируется:
 
 | Поле | Правило |
 |---|---|
 | `em` | trim, lowercase |
 | `ph` | только цифры, включая country code |
 | `external_id` | trim, lowercase, если ID строковый |
+
+Для `external_id` важно использовать один и тот же формат во всех каналах отправки. Если ID передается через Meta Pixel, Conversions API или другие интеграции, он должен быть в одинаковом виде: либо везде raw ID, либо везде SHA-256 hash.
 
 Не хэшировать:
 
@@ -157,7 +159,7 @@ fb.1.1719834000000.AbCdEfGhIjKl
 
 ### Client-side fallback
 
-Если pixel script может быть не загружен, но JavaScript на сайте работает, можно создать `_fbc` самостоятельно при наличии `fbclid`:
+Если pixel script может быть не загружен, но JavaScript на сайте работает, можно создать аналог `_fbc` самостоятельно при наличии `fbclid` (далее делать выбор: fbc = _fbc || _fbca):
 
 ```js
 const params = new URLSearchParams(window.location.search);
@@ -167,7 +169,7 @@ if (fbclid) {
   const fbc = `fb.1.${Date.now()}.${fbclid}`;
 
   document.cookie = [
-    `_fbc=${encodeURIComponent(fbc)}`,
+    `_fbca=${encodeURIComponent(fbc)}`,
     "Max-Age=7776000",
     "Path=/",
     "SameSite=Lax",
@@ -190,7 +192,6 @@ if (fbclid) {
 
 ### Best practices
 
-- Не генерировать `fbc`, если нет реального `fbclid` в URL и нет существующей `_fbc` cookie.
 - Не хэшировать `fbc`; отправлять строку как есть.
 - Собирать `fbclid` на первом landing page до редиректов, canonical redirect, смены языка, payment redirect и очистки query-параметров.
 - Если сайт SPA, обрабатывать `fbclid` при первом page load и при client-side navigation.
@@ -199,6 +200,26 @@ if (fbclid) {
 - На checkout/payment flow сохранять `fbc` в backend session или order attribution snapshot, потому что browser cookie может потеряться на внешнем платежном редиректе.
 - Учитывать consent/CMP: сохранять и отправлять `fbc` только если это разрешено политикой consent для advertising/marketing cookies.
 - Не отправлять пустой, обрезанный или URL-encoded `fbc` в CAPI. Перед отправкой декодировать cookie value и передавать строку формата `fb.1.<timestamp_ms>.<fbclid>`.
+
+## Официальные server-side SDK Meta
+
+Meta рекомендует использовать Meta Business SDK для серверной интеграции с Conversions API. SDK поддерживается самой Meta и доступен для:
+
+- PHP: `facebook/php-business-sdk`
+- Node.js: `facebook-nodejs-business-sdk`
+- Java: `facebook-java-business-sdk`
+- Python: `facebook_business`
+- Ruby: `facebookbusiness`
+
+Для PHP установка через Composer:
+
+```bash
+composer require facebook/php-business-sdk
+```
+
+При использовании Business SDK SDK сам выполняет hashing для customer information parameters, где это требуется Meta. Тем не менее формат `external_id` все равно должен быть единым между каналами: если в Pixel отправляется raw ID, в CAPI тоже должен быть raw ID; если hash, то hash везде.
+
+Минимальная версия PHP для CAPI-фич Business SDK: PHP `>= 7.2`. Поддержка PHP 5 в Business SDK deprecated.
 
 ## Пример curl
 
@@ -301,3 +322,6 @@ curl -X POST "https://graph.facebook.com/v<GRAPH_API_VERSION>/<PIXEL_ID>/events"
 - Meta Conversions API, server event parameters: https://developers.facebook.com/docs/marketing-api/conversions-api/parameters/server-event
 - Meta Conversions API, customer information parameters: https://developers.facebook.com/docs/marketing-api/conversions-api/parameters/customer-information-parameters
 - Meta Conversions API, payload helper: https://developers.facebook.com/docs/marketing-api/conversions-api/payload-helper
+- Meta Conversions API, using the API and Business SDK features: https://developers.facebook.com/docs/marketing-api/conversions-api/using-the-api
+- Meta Business SDK, getting started: https://developers.facebook.com/docs/business-sdk/getting-started
+- Meta PHP Business SDK: https://github.com/facebook/facebook-php-business-sdk
