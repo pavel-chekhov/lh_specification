@@ -55,7 +55,7 @@ POST https://graph.facebook.com/v<GRAPH_API_VERSION>/<PIXEL_ID>/events?access_to
       "user_data": {
         "em": ["<sha256_email>"],
         "ph": ["<sha256_phone>"],
-        "external_id": ["<sha256_user_id_recommended>"],
+        "external_id": ["<user_id>"],
         "client_ip_address": "203.0.113.10",
         "client_user_agent": "Mozilla/5.0 ...",
         "fbp": "fb.1.1719834000000.1234567890",
@@ -100,7 +100,7 @@ POST https://graph.facebook.com/v<GRAPH_API_VERSION>/<PIXEL_ID>/events?access_to
 | `data[].event_id` | string | ID для дедупликации. Использовать `order_id` |
 | `user_data.em` | array<string> | Email, нормализованный и SHA-256 hashed |
 | `user_data.ph` | array<string> | Телефон, нормализованный и SHA-256 hashed |
-| `user_data.external_id` | array<string> | Internal user ID. SHA-256 хэширование рекомендуется Meta, но не является обязательным |
+| `user_data.external_id` | array<string> | Internal user ID, не хэшировать. Использовать стабильный ID пользователя в исходном формате |
 | `user_data.client_ip_address` | string | IP пользователя, не хэшировать |
 | `user_data.client_user_agent` | string | User-Agent пользователя, не хэшировать |
 | `user_data.fbp` | string | Значение cookie `_fbp`, если есть |
@@ -117,9 +117,8 @@ POST https://graph.facebook.com/v<GRAPH_API_VERSION>/<PIXEL_ID>/events?access_to
 |---|---|
 | `em` | trim, lowercase |
 | `ph` | только цифры, включая country code |
-| `external_id` | trim, lowercase, если ID строковый |
 
-Для `external_id` важно использовать один и тот же формат во всех каналах отправки. Если ID передается через Meta Pixel, Conversions API или другие интеграции, он должен быть в одинаковом виде: либо везде raw ID, либо везде SHA-256 hash.
+`external_id` не хэшировать и не нормализовывать под SHA-256. Передавать стабильный внутренний user ID в том же исходном формате, который используется в системе. Если `external_id` также передается через Meta Pixel или другие интеграции, использовать там тот же raw ID.
 
 Не хэшировать:
 
@@ -217,7 +216,7 @@ Meta рекомендует использовать Meta Business SDK для с
 composer require facebook/php-business-sdk
 ```
 
-При использовании Business SDK SDK сам выполняет hashing для customer information parameters, где это требуется Meta. Тем не менее формат `external_id` все равно должен быть единым между каналами: если в Pixel отправляется raw ID, в CAPI тоже должен быть raw ID; если hash, то hash везде.
+При использовании Business SDK SDK сам выполняет hashing для customer information parameters, где это требуется Meta. `external_id` в этой интеграции передавать как raw ID без предварительного хэширования.
 
 Минимальная версия PHP для CAPI-фич Business SDK: PHP `>= 7.2`. Поддержка PHP 5 в Business SDK deprecated.
 
