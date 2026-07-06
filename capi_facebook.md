@@ -157,8 +157,6 @@ dataLayer.push({
 
 `fbc` можно передать в `user_data.fbc`, даже если Meta Pixel library не была инициализирована и cookie `_fbc` не была создана автоматически.
 
-Best practice: если пользователь пришел на сайт по ссылке с параметром `fbclid`, сохранить click ID как first-party cookie или в server-side session на первом landing page. Затем использовать это значение при отправке `Purchase` в Conversions API.
-
 Формат значения `fbc`:
 
 ```text
@@ -211,17 +209,16 @@ if (fbclid) {
 
 1. На каждом request читать `fbclid` из query string.
 2. Если `fbclid` есть, сформировать `fbc` в формате `fb.1.<timestamp_ms>.<fbclid>`.
-3. Сохранить `fbc` в first-party cookie и/или server-side session, привязанную к anonymous/session/user ID.
-4. При создании заказа записать актуальное `fbc` в order attribution snapshot.
-5. При отправке `Purchase` в CAPI передать это значение в `user_data.fbc`.
+3. Сохранить `fbc` в first-party cookie _fbca.
+4. При отправке `Purchase` в CAPI передать это значение в `user_data.fbc`.
 
 ### Best practices
 
 - Не хэшировать `fbc`; отправлять строку как есть.
 - Собирать `fbclid` на первом landing page до редиректов, canonical redirect, смены языка, payment redirect и очистки query-параметров.
 - Если сайт SPA, обрабатывать `fbclid` при первом page load и при client-side navigation.
-- Если пользователь переходит между поддоменами, cookie должна быть доступна на нужном домене, например через `Domain=.example.com`, если это допустимо для проекта.
-- Если пришел новый `fbclid`, обновить `_fbc` новым значением; если нового `fbclid` нет, не перезаписывать существующую `_fbc`.
+- Cookie должна быть доступна на всех поддоменах: `Domain=.example.com`.
+- Если пришел новый `fbclid`, обновить `_fbc` новым значением.
 - На checkout/payment flow сохранять `fbc` в backend session или order attribution snapshot, потому что browser cookie может потеряться на внешнем платежном редиректе.
 - Учитывать consent/CMP: сохранять и отправлять `fbc` только если это разрешено политикой consent для advertising/marketing cookies.
 - Не отправлять пустой, обрезанный или URL-encoded `fbc` в CAPI. Перед отправкой декодировать cookie value и передавать строку формата `fb.1.<timestamp_ms>.<fbclid>`.
@@ -269,14 +266,12 @@ curl -X POST "https://graph.facebook.com/v<GRAPH_API_VERSION>/<PIXEL_ID>/events"
         "custom_data": {
           "currency": "USD",
           "value": 14.99,
-          "order_id": "order_123456",
+          "order_id": "purchase_123456",
           "content_type": "product",
-          "content_ids": ["max_monthly"],
           "contents": [
             {
-              "id": "max_monthly",
-              "quantity": 1,
-              "item_price": 14.99
+              "id": "213123",
+              "quantity": 1
             }
           ]
         }
@@ -341,9 +336,9 @@ curl -X POST "https://graph.facebook.com/v<GRAPH_API_VERSION>/<PIXEL_ID>/events"
 
 ## Ссылки
 
-- Meta Conversions API, server event parameters: https://developers.facebook.com/docs/marketing-api/conversions-api/parameters/server-event
-- Meta Conversions API, customer information parameters: https://developers.facebook.com/docs/marketing-api/conversions-api/parameters/customer-information-parameters
-- Meta Conversions API, payload helper: https://developers.facebook.com/docs/marketing-api/conversions-api/payload-helper
-- Meta Conversions API, using the API and Business SDK features: https://developers.facebook.com/docs/marketing-api/conversions-api/using-the-api
-- Meta Business SDK, getting started: https://developers.facebook.com/docs/business-sdk/getting-started
-- Meta PHP Business SDK: https://github.com/facebook/facebook-php-business-sdk
+- Meta Conversions API, server event parameters: <https://developers.facebook.com/docs/marketing-api/conversions-api/parameters/server-event>
+- Meta Conversions API, customer information parameters: <https://developers.facebook.com/docs/marketing-api/conversions-api/parameters/customer-information-parameters>
+- Meta Conversions API, payload helper: <https://developers.facebook.com/docs/marketing-api/conversions-api/payload-helper>
+- Meta Conversions API, using the API and Business SDK features: <https://developers.facebook.com/docs/marketing-api/conversions-api/using-the-api>
+- Meta Business SDK, getting started: <https://developers.facebook.com/docs/business-sdk/getting-started>
+- Meta PHP Business SDK: <https://github.com/facebook/facebook-php-business-sdk>
